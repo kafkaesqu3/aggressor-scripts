@@ -1,0 +1,38 @@
+# Simple alias to returns the users idletime
+
+alias idletime {
+	bpowershell_import($1,script_resource("scripts/IdleTime.ps1"));
+	bpowershell($1,"IdleTime");
+}
+
+on beacon_output {
+	if ("*Idle*" iswm $2) {
+		local('$temp');
+		foreach $temp (split("\r\n", $2)) {
+		 ($junk1,$junk2,$junk3,$idletime) = split(" ",$temp);
+
+		($hour,$min,$sec) = split(":",$idletime);
+		#println("hour " . $hour);
+		#println("min " . $min);
+		#println("sec " . $sec);
+
+		$sleeptime = $hour . ":" . $min;
+
+		#println($sleeptime);
+		$time = parseDate("hh:mm",$sleeptime);
+
+		println($time);
+
+		$min1 = 60 * 1000;
+		println($min1);
+		
+		if($time < $min1) {
+		  btask($1,"idle for less than a minute");
+		} else {
+		  btask($1,"longer than minute");
+
+		}
+
+		}
+	}
+}

